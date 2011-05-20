@@ -1,58 +1,54 @@
 #!/bin/bash
 
 BASEDIR=`dirname $0`
-MYSQLADMIN="/opt/local/bin/mysqladmin5"
+MYSQL="/usr/bin/mysql"
+MYSQLADMIN="/usr/bin/mysqladmin"
 CRYPT="php -f $BASEDIR/magento_crypt.php"
-MYSQL="/opt/local/bin/mysql5"
-USER=""
-PASS=""
-DBNAME=""
-DEVDBNAME=""
-BASEURL=""
-DEVBASEURL=""
-FEDEXKEY=""
-FEDEXPASSWORD=""
-FEDEXMETER=""
-FEDEXACCOUNT=""
-AUTHNETLOGIN=""
-AUTHNETTRANSKEY=""
-AUTHNETURL=""
-if [ $# -lt 1 ]; then
-  echo "Usage: setupdb.sh gzipdbsnapshot.gz [dev]"
-  exit 1
-fi;
+DBUSER="myuser"
+DBPASS="mypass"
+DBNAME="magento"
+UNSECUREURL="http://magento.host.com/"
+SECUREURL="https://magento.host.com/"
 
-if [ $# -eq 2 ]; then
-  if [ $2 = "dev" ]; then
-    DBNAME=$DEVDBNAME
-    BASEURL=$DEVBASEURL
-  fi;
+if [ $# -lt 1 ]; then
+  echo "Usage: setupdb.sh gzipdbsnapshot.gz"
+  exit 1
 fi;
 
 echo "Dropping database $DBNAME in 5s, hit control-c NOW to abort!"
 sleep 5;
 
 echo "Importing DB from: $1"
-$MYSQLADMIN -u$USER -p$PASS -f drop $DBNAME
-$MYSQLADMIN -u$USER -p$PASS -f create  $DBNAME
-gzcat $1 | $MYSQL -u$USER -p$PASS $DBNAME
+$MYSQLADMIN -u$DBUSER -p$DBPASS -f drop $DBNAME
+$MYSQLADMIN -u$DBUSER -p$DBPASS -f create  $DBNAME
+gunzip -c $1 | $MYSQL -u$DBUSER -p$DBPASS $DBNAME
 
-QUERY1="UPDATE core_config_data SET value = 'http://$BASEURL/store/' WHERE path = 'web/unsecure/base_url'"
-QUERY2="UPDATE core_config_data SET value = 'https://$BASEURL/store/' WHERE path = 'web/secure/base_url'"
-# use test fedex account details
-QUERY3="UPDATE core_config_data SET value='1' WHERE path='carriers/fedex/test_mode'"
-QUERY4="UPDATE core_config_data SET value='`$CRYPT $FEDEXKEY`' WHERE path='carriers/fedex/key'"
-QUERY5="UPDATE core_config_data SET value='`$CRYPT $FEDEXPASSWORD`' WHERE path='carriers/fedex/password'"
-QUERY6="UPDATE core_config_data SET value='`$CRYPT $FEDEXMETER`' WHERE path='carriers/fedex/meter'"
-QUERY7="UPDATE core_config_data SET value='`$CRYPT $FEDEXACCOUNT`' WHERE path='carriers/fedex/account'"
-# use test auth.net account details
-QUERY8="UPDATE core_config_data SET value='`$CRYPT $AUTHNETLOGIN`' WHERE path='payment/authorizenet/login'"
-QUERY9="UPDATE core_config_data SET value='`$CRYPT $AUTHNETTRANSKEY`' WHERE path='payment/authorizenet/trans_key'"
-QUERY10="UPDATE core_config_data SET value='$AUTHNETURL' WHERE path='payment/authorizenet/cgi_url'"
-
+QUERIES=(
+    "UPDATE core_config_data SET value = '$UNSECUREURL' WHERE path = 'web/unsecure/base_url'"
+    "UPDATE core_config_data SET value = '$SECUREURL' WHERE path = 'web/secure/base_url'"
+    # use test fedex account details
+    "UPDATE core_config_data SET value='1' WHERE path='carriers/fedex/test_mode'"
+    "UPDATE core_config_data SET value='`$CRYPT mykey`' WHERE path='carriers/fedex/key'"
+    "UPDATE core_config_data SET value='`$CRYPT mypass`' WHERE path='carriers/fedex/password'"
+    "UPDATE core_config_data SET value='`$CRYPT mymeterno`' WHERE path='carriers/fedex/meter'"
+    "UPDATE core_config_data SET value='`$CRYPT myacctno`' WHERE path='carriers/fedex/account'"
+    "UPDATE core_config_data SET value = 1 WHERE path = 'carriers/fedex/debug'"
+    # use test auth.net account details
+    "UPDATE core_config_data SET value='`$CRYPT mylogin`' WHERE path='payment/authorizenet/login'"
+    "UPDATE core_config_data SET value='`$CRYPT mypass`' WHERE path='payment/authorizenet/trans_key'"
+    "UPDATE core_config_data SET value='https://test.authorize.net/gateway/transact.dll' WHERE path='payment/authorizenet/cgi_url'"
+    # use test usaepay account details
+    "UPDATE core_config_data SET value='mysrckey' WHERE path='payment/usaepay/sourcekey'"
+    "UPDATE core_config_data SET value='mypin' WHERE path='payment/usaepay/sourcepin'"
+    "UPDATE core_config_data SET value = 1 WHERE path='payment/usaepay/sandbox'"
+    # disable caching
+    "UPDATE core_cache_option SET value = 0"
+    "TRUNCATE core_cache"
+    # enable logging
+    "UPDATE core_config_data SET value = 1 WHERE path = 'dev/log/active'"
+)
 echo "Setting DB test defaults"
-for i in `seq 1 10`; do
-  eval QUERY="\${QUERY${i}}"
-  echo $QUERY | $MYSQL -u$USER -p$PASS $DBNAME
+for QUERY in "${QUERIES[@]}"; do
+  echo $QUERY | $MYSQL -u$DBUSER -p$DBPASS $DBNAME
 done
 echo "Done"
